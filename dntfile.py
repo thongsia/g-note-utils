@@ -124,30 +124,6 @@ class DNTfile(object):
                 + 'Firmware:%s\n'%(self.firmware,) \
                 + 'Data offset:0x%x'%(self.data_offset)
     
-    @classmethod
-    def open(cls, file_name):
-        """opens and reads datafile
-        
-        @param file_name: a name of a file to read
-        @return: a DNTfile object attached to the file
-        """
-        fd = open(file_name, 'r') 
-        # check if file is a dnt file, compare first 12 bytes
-        if cls.MARKER != fd.read(12):
-            fd.close()
-            raise Exception('The header of the file doesn\'t match DNT file format.')
-
-        dntobj = cls() # create an empty object
-        # read the header from the file
-        # version number
-        dntobj.version_major = int(struct.unpack('H', fd.read(2))[0])
-        dntobj.version_minor = int(struct.unpack('H', fd.read(2))[0])
-        # no data area
-        fd.read(6)
-        # dpi
-        dntobj.dpi = int(struct.unpack('H', fd.read(2))[0])
-        # x and y size
-
     def toSVG(self):
         """returns a string that contains data in SVG format, no header, just SVG commands
         
