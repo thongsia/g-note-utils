@@ -2,6 +2,8 @@
 # -*- coding: UTF-8 -*-
 import struct
 from string import Template
+import cStringIO
+
 
 class DNTfile(object):
     """class to handle dnt files
@@ -52,13 +54,12 @@ class DNTfile(object):
                 + 'Data offset:0x%x'%(self.data_offset)
     
     @classmethod
-    def open(cls, file_name):
-        """opens and reads datafile
+    def open(cls, fd):
+        """reads data (header and pen positions) from a file like object
         
-        @param file_name: a name of a file to read
-        @return: a DNTfile object attached to the file
+        @param fd: a file object
+        @return: a DNTfile object filled with data from fd file
         """
-        fd = open(file_name, 'r') 
         # check if file is a dnt file, compare first 12 bytes
         if cls.MARKER != fd.read(12):
             fd.close()
@@ -97,12 +98,50 @@ class DNTfile(object):
                     = struct.unpack('5BxBx', rec)
             # assemble pen position and color
             dntobj.data.append( \
-                    (pencolor, xlow + (2<<6)*xhigh + (2<<13)*(int('00000011',2) & xytop), \
-                     ylow + (2<<6)*yhigh + (2<<13)*(int('00001100',2) & xytop)))
+                    [pencolor, xlow + (2<<6)*xhigh + (2<<13)*(int('00000011',2) & xytop), \
+                     ylow + (2<<6)*yhigh + (2<<13)*(int('00001100',2) & xytop)])
             rec = fd.read(8)
 
         return dntobj
     # ==================== end of DNTfile.open ====================
+
+    def asFile(self):
+        """returns data as a cStringIO object that contains data in dnt format
+
+        @return: cStringIO object"""
+
+        res = cStringIO.StringIO() # return value
+
+        # assemble header
+        res.write(self.MARKER) # all dnt files start with some constant string
+        res.write(struct.pack('H', self.version_major))
+        res.write(struct.pack('H', self.version_minor))
+        res.write(struct.pack('3H', 0, 0, 0))
+        res.write(struct.pack('H', self.dpi))
+        res.write(struct.pack('I', self.x_size))
+        res.write(struct.pack('I', self.y_size))
+        res.write(struct.pack('2B', 4, 0))
+        res.write(struct.pack('B', self.rotation))
+        res.write(struct.pack('B', 0))
+        res.write(struct.pack('4s', self.firmware))
+        res.write(struct.pack('2H', 0, 0))
+        res.write(struct.pack('H', self.data_offset))
+        for i in range(self.data_offset-46): # fill space from end of the header to data with 0xff
+            res.write(struct.pack('B', 0xff))
+        # write data
+        l7bit = int('01111111', 2) # a mask that keeps only lower 7 bit
+        for i in self.data:
+            pcolor = i[0]
+            xlow = i[1] & l7bit
+            xhigh = (i[1]>>7) & l7bit
+            ylow = i[2] & l7bit
+            yhigh = (i[2]>>7) & l7bit
+            xytop = (i[1]>>14) + ((i[2]>>12) & int('1100',2))
+            res.write(struct.pack('8B',pcolor, xlow, xhigh, ylow, yhigh, 0, xytop, 0))
+
+        return res
+    # ==================== end of DNTfile.asFile ====================
+
     
     def copyHeader(self, dnt):
         """copies header information from another object"""
@@ -115,14 +154,6 @@ class DNTfile(object):
         self.rotation = dnt.rotation
         self.firmware = dnt.firmware
         self.data_offset = dnt.data_offset
-    
-    def __str__(self):
-        return 'Version:%2d.%0d\n'%(self.version_major, self.version_minor) \
-                + 'DPI:%d\n'%(self.dpi) \
-                + 'X size:%d\nY size:%d\n'%(self.x_size, self.y_size,) \
-                + 'Rotation:%d\n'%(self.rotation) \
-                + 'Firmware:%s\n'%(self.firmware,) \
-                + 'Data offset:0x%x'%(self.data_offset)
     
     def toSVG(self):
         """returns a string that contains data in SVG format, no header, just SVG commands
@@ -142,18 +173,46 @@ class DNTfile(object):
         path_data = '' # pen path
         for stroke in self.data:
             if curpen == self.PEN_CODES[stroke[0]]: # same pen as before add to path
-                path_data += '%d,%d '%(self.y_size-stroke[2],stroke[1])
+                path_data += '%d,%d '%(stroke[1],stroke[2])
             else:
                 if curpen != 'none': # new pen and old one is not none so finish path
                     res += Template(self.SVG_TEMPLATE).safe_substitute( \
                             svg_class = self.PEN2CLASS[curpen], svg_path = path_data) # update result
                     path_data = '' # flush path data, safety path_data should be flushed when new pen is detected
                 if self.PEN_CODES[stroke[0]] != 'none': # the new pen is not none so start path
-                    path_data = '%d,%d '%(self.y_size-stroke[2],stroke[1])
+                    path_data = '%d,%d '%(stroke[1],stroke[2])
                 curpen = self.PEN_CODES[stroke[0]] # always update pen
                 
         return res
     # ==================== end of DNTfile.toSVG ==================== 
+
+    def toVertical(self):
+        """rotates data to vertical position"""
+
+        if self.rotation == 0: # no rotation required
+            return
+
+        if self.rotation == 1:
+            for i in self.data:
+                tmp = i[1]
+                i[1] = self.y_size-i[2]
+                i[2] = self.x_size-tmp
+        elif self.rotation == 2:
+            for i in self.data:
+                i[2] = self.y_size-i[2] 
+        elif self.rotation == 3:
+            for i in self.data:
+                tmp = i[1]
+                i[1] = self.y_size-i[2]
+                i[2] = tmp
+
+        if self.rotation%2 == 1: # if rotated by 90 or 270 degrees switch width, height
+            tmp = self.x_size
+            self.x_size = self.y_size
+            self.y_size = tmp
+
+        self.rotation = 0 
+    
 
 # ==================== end of DNTfile ====================
 
@@ -181,15 +240,18 @@ def simple_dnt2svg(dnt_name, svg_name, css_name = ''):
         SVG_CSS_INSERT = ''
 
     # read file
-    dnt = DNTfile.open(dnt_name)
+    dntfile = open(dnt_name, 'r')
+    dnt = DNTfile.open(dntfile)
+    dntfile.close()
+    dnt.toVertical()
 
     # srite template out using data in dnt object
     sf = open(svg_name, 'w')
     sf.write(Template(SVG_FILE_TEMPLATE).safe_substitute( \
             svg_css = SVG_CSS_INSERT, \
-            svg_width = str(float(dnt.y_size)/dnt.dpi)+'in', \
-            svg_height = str(float(dnt.x_size)/dnt.dpi)+'in', \
-            svg_view_box = '0 0 '+str(dnt.y_size)+' '+str(dnt.x_size), \
+            svg_width = str(float(dnt.x_size)/dnt.dpi)+'in', \
+            svg_height = str(float(dnt.y_size)/dnt.dpi)+'in', \
+            svg_view_box = '0 0 '+str(dnt.x_size)+' '+str(dnt.y_size), \
             svg_data = dnt.toSVG()))
     sf.close()
 # ==================== end of simple_dnt2svg ====================
@@ -219,3 +281,8 @@ def split_pages(dnt):
     
 if __name__ == '__main__':
    simple_dnt2svg('data/BK01-001.DNT', 'test.svg', 'mystyle.css') 
+   #dnt = DNTfile.open( open('data/BK01-001.DNT', 'r') )
+   #print dnt
+   #fl = open ('test.dnt', 'w')
+   #fl.write( dnt.asFile().getvalue() )
+   #fl.close()
