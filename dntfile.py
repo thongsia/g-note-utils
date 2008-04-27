@@ -35,7 +35,7 @@ class DNTfile(object):
         """@ivar: Y size"""
         self.rotation = 0
         """@ivar: rotation (counter clockwise), the angle of rotation is M{90*rotation},
-        0 - portrait up, this number is assumed to be 3 and not used in any calculations"""
+        0 - portrait up, use toVertical to rotate the image"""
         self.firmware = '1.2C'
         """@ivar: firmware version, string constant, default value 1.2C"""
         self.data_offset = 0x0
@@ -54,11 +54,11 @@ class DNTfile(object):
                 + 'Data offset:0x%x'%(self.data_offset)
     
     @classmethod
-    def open(cls, fd):
+    def read(cls, fd):
         """reads data (header and pen positions) from a file like object
         
         @param fd: a file object
-        @return: a DNTfile object filled with data from fd file
+        @return: a DNTfile object filled with data from the fd file
         """
         # check if file is a dnt file, compare first 12 bytes
         if cls.MARKER != fd.read(12):
@@ -126,7 +126,7 @@ class DNTfile(object):
         res.write(struct.pack('4s', self.firmware))
         res.write(struct.pack('2H', 0, 0))
         res.write(struct.pack('H', self.data_offset))
-        for i in range(self.data_offset-46): # fill space from end of the header to data with 0xff
+        for i in range(self.data_offset-46): # fill space from the end of the header to data with 0xff
             res.write(struct.pack('B', 0xff))
         # write data
         l7bit = int('01111111', 2) # a mask that keeps only lower 7 bit
@@ -144,7 +144,9 @@ class DNTfile(object):
 
     
     def copyHeader(self, dnt):
-        """copies header information from another object"""
+        """copies header information from another object
+        
+        @note: is not intended to be used in outside functions"""
 
         self.version_major = dnt.version_major
         self.version_minor = dnt.version_minor
@@ -155,15 +157,14 @@ class DNTfile(object):
         self.firmware = dnt.firmware
         self.data_offset = dnt.data_offset
     
-    def toSVG(self):
+    def asSVG(self):
         """returns a string that contains data in SVG format, no header, just SVG commands
         
         @note: the result contains a sequence of path commands, each belongs to one of 
         PEN2CLASS classes, use css etc. to modify the result
         @note: you can change DNTfile.SVG_TEMPLATE to modify output, safe_substitute is used
         so fields can be added to the template, otherwise use class marker
-        @note: it is assumed that incoming data is rotated by 270 degrees from vertical
-        and the output is rotated to vertical position"""
+        @note: if you want the data to be in vertical orientation call toVertical for your object""" 
 
         if len(self.data) == 0:
             raise Exeption('Can\'t convert to SVG, no data')
@@ -187,7 +188,9 @@ class DNTfile(object):
     # ==================== end of DNTfile.toSVG ==================== 
 
     def toVertical(self):
-        """rotates data to vertical position"""
+        """rotates data to vertical orientation
+        
+        @attention: this function was only tested with rotation=3"""
 
         if self.rotation == 0: # no rotation required
             return
@@ -216,13 +219,13 @@ class DNTfile(object):
 
 # ==================== end of DNTfile ====================
 
-def simple_dnt2svg(dnt_name, svg_name, css_name = ''):
+def simple_dnt2svg(dnt, css_name = ''):
     """simple function to convert from data from dnt to svg format,
     used mainly for testing purposes 
     
-    @param dnt_name: a name of dnt file
-    @param svg_name: a name of output svg file
-    @param css_name: if given it will be included verbatim into the output as the name for css file
+    @param dnt: a DNTfile object that should be converted
+    @param css_name: if given it will be included verbatim into the output as the path to css file
+    @return: a cStringIO object that contains svg file
     @note: see DNTfile.PEN2CLASS for the names of classes used in the output"""
     
     # template for output
@@ -239,21 +242,18 @@ def simple_dnt2svg(dnt_name, svg_name, css_name = ''):
     else: 
         SVG_CSS_INSERT = ''
 
-    # read file
-    dntfile = open(dnt_name, 'r')
-    dnt = DNTfile.open(dntfile)
-    dntfile.close()
+    # rotate image 
     dnt.toVertical()
 
-    # srite template out using data in dnt object
-    sf = open(svg_name, 'w')
+    # write template out using data in dnt object
+    sf = cStringIO.StringIO()
     sf.write(Template(SVG_FILE_TEMPLATE).safe_substitute( \
             svg_css = SVG_CSS_INSERT, \
             svg_width = str(float(dnt.x_size)/dnt.dpi)+'in', \
             svg_height = str(float(dnt.y_size)/dnt.dpi)+'in', \
             svg_view_box = '0 0 '+str(dnt.x_size)+' '+str(dnt.y_size), \
-            svg_data = dnt.toSVG()))
-    sf.close()
+            svg_data = dnt.asSVG()))
+    return sf
 # ==================== end of simple_dnt2svg ====================
 
 def split_pages(dnt):
@@ -280,9 +280,17 @@ def split_pages(dnt):
     
     
 if __name__ == '__main__':
-   simple_dnt2svg('data/BK01-001.DNT', 'test.svg', 'mystyle.css') 
-   #dnt = DNTfile.open( open('data/BK01-001.DNT', 'r') )
-   #print dnt
-   #fl = open ('test.dnt', 'w')
-   #fl.write( dnt.asFile().getvalue() )
-   #fl.close()
+    # the following code opens a file, rotates image, writes result as dnt and svg
+    fl = open('data/BK01-002.DNT', 'r')
+    dnt = DNTfile.read(fl)
+    fl.close()
+    # rotate
+    dnt.toVertical()
+    # save dnt output
+    fl = open('test.dnt', 'w')
+    fl.write( dnt.asFile().getvalue() )
+    fl.close()
+    # save svg output
+    fl = open('test.svg', 'w')
+    fl.write( simple_dnt2svg(dnt, 'mystyle.css').getvalue() )
+    fl.close() 
