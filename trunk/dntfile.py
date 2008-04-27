@@ -281,7 +281,7 @@ def split_pages(dnt):
     
 if __name__ == '__main__':
     # the following code opens a file, rotates image, writes result as dnt and svg
-    fl = open('data/BK01-002.DNT', 'r')
+    fl = open('data/BK01-001.DNT', 'r')
     dnt = DNTfile.read(fl)
     fl.close()
     # rotate
