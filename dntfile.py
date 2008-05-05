@@ -184,9 +184,13 @@ class DNTfile(object):
                     path_data = '%d,%d '%(stroke[1],stroke[2])
                 curpen = self.PEN_CODES[stroke[0]] # always update pen
                 
+        # a rectangle around the page , for test purposes
+        #res += Template(self.SVG_TEMPLATE).safe_substitute( \
+        #    svg_class = 'dnt-pen-black', svg_path = \
+        #    '0,0 '+str(self.x_size)+',0 '+str(self.x_size)+','+str(self.y_size)+' ') 
         return res
     # ==================== end of DNTfile.toSVG ==================== 
-
+    
     def toVertical(self):
         """rotates data to vertical orientation
         
@@ -279,30 +283,31 @@ def split_pages(dnt, xreg, yreg):
     to a region in top right corner of a page that has width equal to 5% of page width and 
     height that is 5% of page hieght."""
 
-    STROKE_THRESHOLD = 10
+    STROKE_THRESHOLD = 10 
     # the number of strokes before a point in a new page box will be interpreted as a new page
 
     res = [] # return value
     res.append(DNTfile()) # there is at least one object in return value list
     res[-1].copyHeader(dnt) # copy header information, it will be the same for all returned objects
     strokenumber = 0 # the number of points that were parsed after page started, compared to POINT_THRESHOLD
-    for pnt in dnt.data: # a loop over all points in the input object
-        if PEN_CODES[pnt[0]] == 'none': # strokes are separated by pen up code
+    for i, pnt in enumerate(dnt.data): # a loop over all points in the input object
+        if dnt.PEN_CODES[pnt[0]] == 'none': # strokes are separated by pen up code
             strokenumber += 1
         else:
             # check for new page and add new dnt object
             if strokenumber > STROKE_THRESHOLD \
-                    and ( xreg*dnt.width > pnt.data[1] or xreg*dnt.width < (pnt.data[1]-dnt.width) ) \
-                    and ( yreg*dnt.height > pnt.data[2] or yreg*dnt.height < (pnt.data[2]-dnt.height) ):
+                    and ( xreg*dnt.x_size > pnt[1] or xreg*dnt.x_size < (pnt[1]-dnt.x_size) ) \
+                    and ( yreg*dnt.y_size > pnt[2] or yreg*dnt.y_size < (pnt[2]-dnt.y_size) ):
                         res.append(DNTfile())
                         res[-1].copyHeader(dnt)
+                        strokenumber = 0
         res[-1].data.append(pnt) # always append point to the last element of return list
 
     return res
 
 if __name__ == '__main__':
     # the following code opens a file, rotates image, writes result as dnt and svg
-    fl = open('data/BK01-001.DNT', 'r')
+    fl = open('data/testmultipage.dnt', 'r')
     dnt = DNTfile.read(fl)
     fl.close()
     # rotate
