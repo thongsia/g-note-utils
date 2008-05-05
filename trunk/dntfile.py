@@ -256,7 +256,7 @@ def simple_dnt2svg(dnt, css_name = ''):
     return sf
 # ==================== end of simple_dnt2svg ====================
 
-def split_pages(dnt):
+def split_pages(dnt, xreg, yreg):
     """the main function in this module, it split pages based on a marker
 
     The main purpose of this project is to upgrade interaction with 
@@ -271,11 +271,23 @@ def split_pages(dnt):
     something in top right corner and then below 1/3 line on a page.
     One drawback is that you cant edit your writing in top right corner
     afterwards but this place is usually occupied by page number anyway.
+	
+	@param dnt: a dnt object that should be split
+	@param xreg, yreg: define a rectangular region where a marker for a new page will appear,
+	the values are a fraction of page width/height. If a value is negative then the rectangle
+	is measured from bottom/left side of a page. Example: xreg=0.05 yreg=-0.05 corresponds
+	to a region in top right corner of a page that has width equal to 5% of page width and 
+	height that is 5% of page hieght."""
 
-    Top right corner is 0.5in but 0.5in area.
-    
-    @param dnt: a DNTfile object
-    @return: a list of DNTfile objects that contain individual pages"""
+	STROKE_THRESHHOLD = 10
+	# the number of strokes that has to be written before a stroke in a marker regions 
+	# will be interpreted as a new page marker
+	
+	res = [] # return value
+	res.append(DNTfile()) # there is at least one object in return value list
+	res[-1].copyHeader(dnt) # copy header information, it will be the same for all returned objects
+	strokenumbe = 0 # the number of strokes that was parsed since the current page was created
+	for str in dnt.data: # a loop over all points in the input object
 
     
     
