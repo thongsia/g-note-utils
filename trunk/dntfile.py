@@ -271,26 +271,35 @@ def split_pages(dnt, xreg, yreg):
     something in top right corner and then below 1/3 line on a page.
     One drawback is that you cant edit your writing in top right corner
     afterwards but this place is usually occupied by page number anyway.
-	
-	@param dnt: a dnt object that should be split
-	@param xreg, yreg: define a rectangular region where a marker for a new page will appear,
-	the values are a fraction of page width/height. If a value is negative then the rectangle
-	is measured from bottom/left side of a page. Example: xreg=0.05 yreg=-0.05 corresponds
-	to a region in top right corner of a page that has width equal to 5% of page width and 
-	height that is 5% of page hieght."""
 
-	STROKE_THRESHHOLD = 10
-	# the number of strokes that has to be written before a stroke in a marker regions 
-	# will be interpreted as a new page marker
-	
-	res = [] # return value
-	res.append(DNTfile()) # there is at least one object in return value list
-	res[-1].copyHeader(dnt) # copy header information, it will be the same for all returned objects
-	strokenumbe = 0 # the number of strokes that was parsed since the current page was created
-	for str in dnt.data: # a loop over all points in the input object
+    @param dnt: a dnt object that should be split
+    @param xreg, yreg: define a rectangular region where a marker for a new page will appear,
+    the values are a fraction of page width/height. If a value is negative then the rectangle
+    is measured from bottom/left side of a page. Example: xreg=-0.05 yreg=0.05 corresponds
+    to a region in top right corner of a page that has width equal to 5% of page width and 
+    height that is 5% of page hieght."""
 
-    
-    
+    STROKE_THRESHOLD = 10
+    # the number of strokes before a point in a new page box will be interpreted as a new page
+
+    res = [] # return value
+    res.append(DNTfile()) # there is at least one object in return value list
+    res[-1].copyHeader(dnt) # copy header information, it will be the same for all returned objects
+    strokenumber = 0 # the number of points that were parsed after page started, compared to POINT_THRESHOLD
+    for pnt in dnt.data: # a loop over all points in the input object
+        if PEN_CODES[pnt[0]] == 'none': # strokes are separated by pen up code
+            strokenumber += 1
+        else:
+            # check for new page and add new dnt object
+            if strokenumber > STROKE_THRESHOLD \
+                    and ( xreg*dnt.width > pnt.data[1] or xreg*dnt.width < (pnt.data[1]-dnt.width) ) \
+                    and ( yreg*dnt.height > pnt.data[2] or yreg*dnt.height < (pnt.data[2]-dnt.height) ):
+                        res.append(DNTfile())
+                        res[-1].copyHeader(dnt)
+        res[-1].data.append(pnt) # always append point to the last element of return list
+
+    return res
+
 if __name__ == '__main__':
     # the following code opens a file, rotates image, writes result as dnt and svg
     fl = open('data/BK01-001.DNT', 'r')
